@@ -1,11 +1,11 @@
 {
   "name": "edubake",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check edubake.user.js && node --check extension/background.js && node --check extension/reporter.js && node --check extension/bridge.js && node --check extension/popup.js",
-    "test": "node tests/integration.mjs && node tests/media-companion.mjs"
+    "check": "node --check edubake.user.js",
+    "test": "node tests/integration.mjs"
   },
   "devDependencies": {
     "fake-indexeddb": "6.2.8",

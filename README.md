@@ -1,64 +1,69 @@
-# EduBake 3.0
+# EduBake 3.1
 
-An unofficial personal enhancement userscript for `https://my.educake.co.uk/*`.
+A minimal personal enhancement userscript for `https://my.educake.co.uk/*`.
 
-## Install / update
+## Install or update
 
-Install [loader.user.js](https://raw.githubusercontent.com/imkowai/edubake/main/loader.user.js) in Tampermonkey. Keep one EduBake installation enabled: disable any old standalone copies when using the loader. The loader fetches the current `edubake.user.js` on each page load; GitHub may briefly cache updates. Existing loader v1.1.0 continues to work.
+Install [loader.user.js](https://raw.githubusercontent.com/imkowai/edubake/main/loader.user.js) in Tampermonkey. Existing loader v1.1.0 continues to work: reload Educake to fetch the update. Keep one EduBake installation enabled. GitHub may briefly cache a recent release.
 
-Open settings with the **EduBake** button or **Alt+E**. Release notes appear after each version change and can be reopened in **Data & updates**.
+The settings gear opens EduBake; **Alt+E** is the keyboard shortcut. Version notes appear once per release and can be reopened in **Data**.
 
-## QuizUI 3.0
+## Minimal quiz view
 
-- Borderless question container and question text, responsive choices, readable dashboard tables.
-- Click the question (or focus it and press Enter) to copy a prompt containing the question, extract and choices. No separate Copy AI Prompt button.
-- Font family, installed custom fonts, text size, corner radius, accent colour, light/dark surfaces and motion controls.
-- **3.0 Default**, **Hacker**, **Anime**, **Alya**, **Build**, **Midnight** and **Sakura** themes. Hacker uses a monospace terminal presentation with text-style buttons.
-- Generated Alisa Kujou mascot logo and Alya study wallpaper. Anime includes the animated Miku cursor; any image/GIF can be used as a sprite cursor.
-- Optional recognition: confetti on a correct mark and a single red edge pulse on an incorrect mark. Reduced-motion settings use text feedback instead. Recognition uses native feedback or score changes after a submission; it does not guess from the colour of an unmarked answer.
-- Build CSS editor, accent favicon, custom favicon/title, clock, focus timer, music player, diagnostics and settings/answer backups.
+- Native course headings, colour/font controls and duplicate score headers are hidden while taking a quiz.
+- The actual question sits on a translucent card. Essential answer inputs, choices, extracts, native Submit/Next controls and feedback remain available.
+- The compact bottom pill shows the question number. Hover, focus or tap to reveal accuracy and wrong-answer count.
+- There is no persistent EduBake quiz toolbar or explanation panel. Notifications disappear after 2.6 seconds.
+- Click the question, or focus it and press Enter, to copy a prompt containing its text, extract and choices.
+- **Auto+** settings contain retry/pause controls and the last suggested answer when a manual review is needed.
 
-## Wallpaper and cursor loading
+Minimal view and the typing mascot can be disabled individually in Auto+ settings. Quiz layout can also be disabled without removing the rest of EduBake.
 
-Use **Appearance → Wallpaper → Apply URL**, **Use sample image**, or upload a local image. The sample is `https://images3.alphacoders.com/132/1322308.jpeg`.
+## Appearance
 
-Images are downloaded using the userscript manager, decoded before use, stored as binary Blobs in IndexedDB and placed in a dedicated fixed background layer inside an isolated body stacking context. Blob URLs and a data-URL rendering fallback handle different image policies. There are no third-party image proxies. The previous wallpaper stays in place when a replacement fails. Images are limited to 25 MB.
+The new Alya icon is paired with a Fredoka wordmark and used as the default favicon. An explicit custom favicon URL remains supported. The old “Your study space” subtitle has been removed, and controls use SVG icons.
 
-If an image host blocks your browser or download, upload the file instead. Browser CSP, enterprise rules and image-host availability can still prevent a remote image from rendering; the status area reports errors. Custom GIF cursors use a throttled image follower rather than relying on animated OS cursor support.
+Font choices are **Sans**, **Computer**, **Comic Sans**, **Fredoka One**, **Serif** and **Verdana**, with a custom installed-font field. Fredoka One is bundled and loaded from font bytes; it does not require Google Fonts at runtime. Comic Sans uses the installed font where available, otherwise the browser's cursive fallback. The included Fredoka font retains its original copyright and SIL Open Font License in `assets/FREDOKA-OFL.txt`.
 
-## Auto+ / Groq
+Theme presets, corner radius, accent colour, dimming, blur, custom title/favicon, custom CSS and Miku/custom GIF cursors remain available.
 
-1. Open **Quiz & Auto+**, paste **your own** Groq key, and select **Save API key**.
-2. Enable **Auto+**. Submission/advancing is a separate setting and starts off.
-3. The model is `openai/gpt-oss-120b` through Groq's `/openai/v1/chat/completions` endpoint, using a strict JSON schema.
+### Wallpaper layering
 
-When enabled, question text, extract and choices are sent to Groq. For multiple choice, only an exact option in the submitted choices is accepted. An explanation appears below the question. The model is text-only here: diagram/image questions are skipped. Missing context, API errors, invalid answers or unsupported answer widgets require manual review; use **Retry Auto+** to retry. Delayed actions and in-flight requests are cancelled when paused or the question changes. API keys stay in userscript storage and are excluded from backups.
+The fixed wallpaper now lives directly under the document root, **outside the site's body and app containers**, at layer 0. The body sits transparently above it at layer 1. The quiz's wrapper chain has opaque backgrounds and background images cleared using narrowly tracked inline overrides; previous inline values are restored when the wallpaper is cleared. If the site reapplies an opaque wrapper style, EduBake detects and clears it again. The question card remains translucent.
 
-Saved-answer filling remains available and uses exact context-matched entries rather than fuzzy global guesses. Results pages have a **Save reviewed answers** action. Suggestions may be wrong; review explanations and native feedback.
+Use **Appearance → Wallpaper**, paste a URL and select **Apply URL**, or upload an image (up to 25 MB). The sample is `https://images3.alphacoders.com/132/1322308.jpeg`.
 
-Docs: [Groq compatibility](https://console.groq.com/docs/openai), [GPT-OSS 120B](https://console.groq.com/docs/model/openai/gpt-oss-120b), [structured outputs](https://console.groq.com/docs/structured-outputs).
+Images are verified before replacement and cached as binary Blobs in IndexedDB. There are no third-party image proxies. Blob and data-URL rendering paths are supported. A failed replacement preserves the working wallpaper. A host or enterprise browser policy can still block an external image; local upload is the fallback.
 
-## Login profiles and passkeys
+### Alya typing animation
 
-Login styling preserves Educake's native student/staff controls and Google/Microsoft sign-in. Browser password-manager autocomplete remains supported.
+When a quiz text field gains focus, Alya peeks up above it. Each typed key triggers a brief bonk animation, and she hides on blur. She does not receive pointer input or modify the answer. Reduced-motion preferences suppress the bonk animation.
 
-**Profiles** offers a local vault encrypted with AES-256-GCM and a PBKDF2-SHA-256 passphrase-derived key (310,000 iterations and a random salt). Each write uses a fresh random IV. Unlock with your vault passphrase to choose a profile and fill the native form. Auto-sign-in is optional and happens only after you explicitly choose an unlocked profile. The vault locks after five minutes or leaving the page.
+### Draggable clock
 
-Optional passkey unlock uses WebAuthn PRF to encrypt a copy of the vault key. It requires a compatible browser/authenticator and is configured after passphrase unlock. This unlocks EduBake's **local** vault; it does not add native Educake passkey or TOTP support. Keep your vault passphrase as the fallback. No credentials or vault files are shipped in this repository.
+Enable the clock under **Clock**. Drag it to move; the position is bounded to the viewport and saved locally. Keyboard users can focus it and use arrow keys. A focus timer remains available.
 
-## Music across browser tabs
+## Auto+
 
-The userscript can play a local audio file, a direct audio URL or link a media element on the current page. Cross-tab information requires the optional [browser media companion](extension/README.md).
+Save your own Groq key in **Auto+**, then enable Auto+. It uses `openai/gpt-oss-120b` through Groq's chat-completions endpoint with a strict JSON schema. Questions, extracts and choices are sent only when you enable the feature. API keys stay in userscript storage and are excluded from backups.
 
-With the companion installed and enabled, EduBake shows the title, artist and playback state of a playing track from supported browser tabs. Play/pause is available in the companion popup or the browser's media controls. Without it, the user interface clearly describes the userscript's tab limitation.
+- Multiple choice must match an available option exactly.
+- Free-text fields do **not** require an extract merely because they are free text. The model is prompted to use subject knowledge and return the shortest accepted answer.
+- Automatic text filling is limited to **three words**, converted to lowercase and stripped of decorative punctuation. The one-to-three-word limit is also applied to cached answers.
+- Longer answers are not entered or submitted automatically. A brief notification shows the suggestion, and **Auto+ → Last answer → Copy answer** provides manual access afterward.
+- Decimal, negative, fractional or symbolic number formatting is left for manual entry rather than silently changing the mathematical value to remove punctuation.
+- The integration is text-only, so diagrams are skipped. A blank/invalid response remains an error, rather than inventing an answer.
+- Submission/advancing is a separate setting. Pending requests and delayed actions are cancelled when paused or the question changes.
 
-## Performance
+Saved exact-answer filling, reviewed-answer caching on result pages, settings/answer backups, diagnostics and the advanced JavaScript console remain available.
 
-The interface is isolated in a Shadow DOM. DOM updates are batched and ignore EduBake widgets; its own synchronous changes are applied with observation paused. Wallpapers and built-in assets are cached, cursor movement uses one animation frame per pointer update, particle counts and lifetimes are bounded, and idle pages do not continuously fetch resources. Clock/media intervals are only active when enabled. System reduced-motion preferences are respected.
+## Removed features
+
+Profiles, credential autofill, passkey vault UI, all music-player UI, media bridges and the optional media extension have been removed. Existing encrypted profile data is left untouched in userscript storage; this release does not read it. If you installed the earlier browser media companion, it is no longer used and can be uninstalled.
 
 ## Development
 
-Requires Node.js 20 or newer.
+Node.js 20 or newer:
 
 ```sh
 npm ci
@@ -66,6 +71,6 @@ npm run check
 npm test
 ```
 
-Tests run production source against DOM fixtures, fake IndexedDB and mocked image/Groq responses. They cover settings, wallpapers, cursor setup, exact-choice validation, cancellation, encrypted vault round trips, native login autofill, dashboard columns, version notes and media companion access boundaries. They do not call Groq, enroll a real authenticator or prove the live site's layout. API-key, passkey hardware and live Educake checks must be performed in your own browser.
+The regression suite executes production code against DOM fixtures, fake IndexedDB, verified fixture assets and mocked Groq responses. It covers wallpaper layer placement and recovery from opaque wrappers, failed replacements, minimal UI and pill, font/icon branding, short-answer rules, exact choice validation, cancellation, typing reactions, draggable-clock persistence, transient notices and removed features.
 
-For each release, bump both the userscript `@version` and `VERSION`, update `NOTES` and this document, run the checks, then push. Do not commit API keys, passwords or profile exports.
+These are automated fixture checks, not a claim of a live authenticated Educake or real Groq test. For each release, bump both version declarations, update `NOTES`, run checks and push.
