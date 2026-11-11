@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         EduBake
 // @namespace    http://tampermonkey.net/
-// @version      2.2.0
-// @description  The ultimate enhancement suite for Educake: QuizUI 2.0, Centered Layouts, Non-Base64 20-Stage Resilient Background Loader, Real Dark Mode, Rainbow Accents, AutoAnswer Harvester & JS Sandbox.
+// @version      2.3.0
+// @description  EduBake: quiz interface, themes, saved backgrounds, study tools and version update notes.
 // @author       Henry & Grok
 // @match        https://my.educake.co.uk/*
 // @icon         https://www.google.com/s2/favicons?domain=educake.co.uk
@@ -22,7 +22,15 @@
     // ─────────────────────────────────────────────────────────────────────────
 
     const SCRIPT_NAME = 'EduBake';
-    const SCRIPT_VERSION = '2.2.0';
+    const SCRIPT_VERSION = '2.3.0';
+    const RELEASE_NOTES = [
+        'New: update notes appear once per version, with a What’s new button in Settings.',
+        'Fixed: background replacement, stale background loads and missing cached images.',
+        'Fixed: storage errors are caught and reported instead of appearing to save successfully.',
+        'Fixed: settings apply immediately; disabling QuizUI removes its controls.',
+        'Improved: keyboard-friendly dialogs, safe text rendering and reduced-motion support.',
+        'Fixed: exported database downloads release their temporary resources.'
+    ];
     const STORAGE_KEY_CONFIG = 'edubake_v2_system_config';
     const STORAGE_KEY_CACHE = 'edubake_v2_answer_knowledge_base';
     const INDEXEDDB_NAME = 'EduBake_Asset_Storage';
@@ -163,7 +171,7 @@
         putBlob: async function (key, blob) {
             try {
                 const db = await this.open();
-                return new Promise((resolve, reject) => {
+                return await new Promise((resolve, reject) => {
                     const transaction = db.transaction([INDEXEDDB_STORE_BLOBS], 'readwrite');
                     const store = transaction.objectStore(INDEXEDDB_STORE_BLOBS);
                     const request = store.put(blob, key);
@@ -181,7 +189,7 @@
         getBlob: async function (key) {
             try {
                 const db = await this.open();
-                return new Promise((resolve, reject) => {
+                return await new Promise((resolve, reject) => {
                     const transaction = db.transaction([INDEXEDDB_STORE_BLOBS], 'readonly');
                     const store = transaction.objectStore(INDEXEDDB_STORE_BLOBS);
                     const request = store.get(key);
@@ -198,7 +206,7 @@
         deleteBlob: async function (key) {
             try {
                 const db = await this.open();
-                return new Promise((resolve, reject) => {
+                return await new Promise((resolve, reject) => {
                     const transaction = db.transaction([INDEXEDDB_STORE_BLOBS], 'readwrite');
                     const store = transaction.objectStore(INDEXEDDB_STORE_BLOBS);
                     const request = store.delete(key);
@@ -262,6 +270,7 @@
             }
             applyTheme();
             syncAllUIControls();
+            schedulePass();
         },
 
         getAnswerDatabase: function () {
@@ -657,7 +666,7 @@
             const dt = (now - lastFrameTime) / 1000;
             lastFrameTime = now;
 
-            if (config.accentPreset === 'rainbow') {
+            if (config.accentPreset === 'rainbow' && !document.hidden && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
                 let speedDegPerSec = 45;
                 if (config.rainbowSpeed === 'slow') speedDegPerSec = 16;
                 if (config.rainbowSpeed === 'fast') speedDegPerSec = 140;
@@ -1373,6 +1382,8 @@
             z-index: 100000000;
         }
         .edubake-modal-frame {
+            max-height: 85vh;
+            overflow-y: auto;
             background: #141414;
             border: 2px solid var(--bake-accent);
             border-radius: 12px;
@@ -1397,6 +1408,10 @@
             justify-content: center;
             gap: 12px;
         }
+        @media (prefers-reduced-motion: reduce) {
+            .edubake-snow-particle { display: none !important; }
+            #edubake-side-drawer, .edubake-modal-frame, .edubake-progress-bar { animation: none !important; transition: none !important; }
+        }
     `);
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1407,51 +1422,44 @@
     let backgroundIdentity = '';
     let backgroundLoading = false;
 
+    function getBackgroundIdentity() {
+        return JSON.stringify([config.bgType, config.bgSourceUrl, config.bgActiveBlobKey, config.bgRevision]);
+    }
+
     async function ensureBackgroundCanvas() {
-        const identity = JSON.stringify([config.bgType, config.bgSourceUrl, config.bgActiveBlobKey]);
-        if (backgroundIdentity === identity || backgroundLoading) return;
+        const identity = getBackgroundIdentity();
+        if (backgroundLoading || (backgroundIdentity === identity && document.getElementById('edubake-canvas-bg'))) return;
         backgroundLoading = true;
         try {
-        let canvas = document.getElementById('edubake-canvas-bg');
-        if (!canvas) {
-            canvas = document.createElement('div');
-            canvas.id = 'edubake-canvas-bg';
-            document.documentElement.insertBefore(canvas, document.documentElement.firstChild);
-        }
-
-        if (config.bgType === 'none') {
-            canvas.style.backgroundImage = '';
-            document.documentElement.classList.remove('bake-has-bg');
-            document.body.classList.remove('bake-has-bg');
-            if (activeObjectUrl) {
-                URL.revokeObjectURL(activeObjectUrl);
-                activeObjectUrl = null;
+            let imageUrl = '';
+            let candidateObjectUrl = null;
+            if (config.bgType === 'indexeddb') {
+                const blob = await IndexedDBStorage.getBlob(config.bgActiveBlobKey || 'primary_background');
+                // Ignore a previous selection finishing after a newer selection.
+                if (identity !== getBackgroundIdentity()) return;
+                if (blob) imageUrl = candidateObjectUrl = URL.createObjectURL(blob);
+                else Logger.warn('Saved background is unavailable; upload the image again.');
+            } else if (config.bgType === 'url') {
+                imageUrl = config.bgSourceUrl || '';
             }
-            return;
-        }
-
-        // 1. Try to load persistent Blob from IndexedDB
-        if (config.bgType === 'indexeddb') {
-            const blob = await IndexedDBStorage.getBlob(config.bgActiveBlobKey || 'primary_background');
-            if (blob) {
-                if (activeObjectUrl) {
-                    URL.revokeObjectURL(activeObjectUrl);
-                }
-                activeObjectUrl = URL.createObjectURL(blob);
-                canvas.style.backgroundImage = `url("${activeObjectUrl}")`;
-                document.documentElement.classList.add('bake-has-bg');
-                document.body.classList.add('bake-has-bg');
-                return;
+            let canvas = document.getElementById('edubake-canvas-bg');
+            if (!canvas) {
+                canvas = document.createElement('div');
+                canvas.id = 'edubake-canvas-bg';
+                document.body.prepend(canvas);
             }
+            canvas.style.backgroundImage = imageUrl ? `url(${JSON.stringify(imageUrl)})` : '';
+            document.documentElement.classList.toggle('bake-has-bg', !!imageUrl);
+            document.body.classList.toggle('bake-has-bg', !!imageUrl);
+            if (activeObjectUrl) URL.revokeObjectURL(activeObjectUrl);
+            activeObjectUrl = candidateObjectUrl;
+            backgroundIdentity = identity;
+        } catch (error) {
+            Logger.error('Background rendering failed:', error);
+        } finally {
+            backgroundLoading = false;
+            if (identity !== getBackgroundIdentity()) schedulePass();
         }
-
-        // 2. Direct URL mode fallback
-        if (config.bgSourceUrl) {
-            canvas.style.backgroundImage = `url("${config.bgSourceUrl}")`;
-            document.documentElement.classList.add('bake-has-bg');
-            document.body.classList.add('bake-has-bg');
-        }
-        } finally { backgroundLoading = false; backgroundIdentity = identity; }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1465,6 +1473,7 @@
         body.classList.toggle('bake-cursor-shiny', config.cursorStyle === 'shiny-dot');
         body.classList.toggle('bake-cursor-crosshair', config.cursorStyle === 'crosshair');
 
+        if (config.cursorStyle !== 'custom') body.style.cursor = '';
         if (config.cursorStyle === 'custom' && config.customCursorUrl) {
             body.style.cursor = `url("${config.customCursorUrl}"), auto`;
         } else if (config.cursorStyle !== 'shiny-dot' && config.cursorStyle !== 'crosshair') {
@@ -1473,7 +1482,7 @@
     }
 
     window.addEventListener('click', (e) => {
-        if (config.cursorStyle !== 'shiny-dot') return;
+        if (config.cursorStyle !== 'shiny-dot' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
         for (let i = 0; i < 7; i++) {
             const flake = document.createElement('div');
             flake.className = 'edubake-snow-particle';
@@ -2133,22 +2142,105 @@
         }
     }
 
-    function showEduBakeModal(title, text, confirmText, onConfirm) {
+    function createEduBakeDialog(title) {
+        const previousFocus = document.activeElement;
         const overlay = document.createElement('div');
         overlay.className = 'edubake-modal-backdrop';
-        overlay.innerHTML = `
-            <div class="edubake-modal-frame">
-                <h3>${title}</h3>
-                <p>${text}</p>
-                <div class="edubake-modal-btn-row">
-                    <button class="btn blue px-4 py-2 font-semibold" id="eb-modal-confirm">${confirmText}</button>
-                    <button class="btn px-4 py-2 bg-gray-700 text-white" id="eb-modal-dismiss">Close</button>
-                </div>
-            </div>
-        `;
+        const frame = document.createElement('div');
+        frame.className = 'edubake-modal-frame';
+        frame.setAttribute('role', 'dialog');
+        frame.setAttribute('aria-modal', 'true');
+        frame.setAttribute('aria-label', title);
+        const heading = document.createElement('h3');
+        heading.textContent = title;
+        frame.appendChild(heading);
+        overlay.appendChild(frame);
+        let closed = false;
+        const close = () => {
+            if (closed) return;
+            closed = true;
+            document.removeEventListener('keydown', onKey, true);
+            overlay.remove();
+            if (previousFocus?.isConnected) previousFocus.focus();
+            overlay.dispatchEvent(new Event('edubake-close'));
+        };
+        function onKey(event) {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                close();
+            } else if (event.key === 'Tab') {
+                const items = Array.from(frame.querySelectorAll('button, input, textarea, select, a[href]')).filter(el => !el.disabled);
+                if (!items.length) return;
+                const first = items[0], last = items[items.length - 1];
+                if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+                else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+            }
+        }
+        document.addEventListener('keydown', onKey, true);
         document.body.appendChild(overlay);
-        overlay.querySelector('#eb-modal-confirm').onclick = () => { overlay.remove(); onConfirm(); };
-        overlay.querySelector('#eb-modal-dismiss').onclick = () => overlay.remove();
+        return {overlay, frame, close};
+    }
+
+    function showEduBakeModal(title, text, confirmText, onConfirm) {
+        const {frame, close} = createEduBakeDialog(title);
+        const content = document.createElement('p');
+        content.textContent = text;
+        frame.appendChild(content);
+        const row = document.createElement('div');
+        row.className = 'edubake-modal-btn-row';
+        const confirmButton = document.createElement('button');
+        confirmButton.type = 'button';
+        confirmButton.className = 'btn blue px-4 py-2 font-semibold';
+        confirmButton.textContent = confirmText;
+        confirmButton.onclick = () => { close(); onConfirm?.(); };
+        const dismissButton = document.createElement('button');
+        dismissButton.type = 'button';
+        dismissButton.className = 'btn px-4 py-2 bg-gray-700 text-white';
+        dismissButton.textContent = 'Close';
+        dismissButton.onclick = close;
+        row.append(confirmButton, dismissButton);
+        frame.appendChild(row);
+        confirmButton.focus();
+    }
+
+    let updateModalShown = false;
+    function showUpdateNotes(manual = false) {
+        if (document.getElementById('edubake-update-modal')) return;
+        if (!manual) {
+            if (updateModalShown || document.querySelector('.edubake-modal-backdrop')) return;
+            try {
+                const seen = typeof GM_getValue === 'function'
+                    ? GM_getValue('edubake_last_seen_version', '')
+                    : localStorage.getItem('edubake_last_seen_version');
+                if (seen === SCRIPT_VERSION) { updateModalShown = true; return; }
+            } catch (error) { Logger.warn('Could not read update history.', error); }
+        }
+        const {overlay, frame, close} = createEduBakeDialog(`What’s new in EduBake ${SCRIPT_VERSION}`);
+        overlay.id = 'edubake-update-modal';
+        updateModalShown = true;
+        // Mark as seen only after dismissal, so an unread update returns after reload.
+        overlay.addEventListener('edubake-close', () => {
+            try {
+                if (typeof GM_setValue === 'function') GM_setValue('edubake_last_seen_version', SCRIPT_VERSION);
+                else localStorage.setItem('edubake_last_seen_version', SCRIPT_VERSION);
+            } catch (error) { Logger.warn('Could not save update history.', error); }
+        }, {once: true});
+        const list = document.createElement('ul');
+        list.style.cssText = 'text-align:left;color:#ddd;line-height:1.6;padding-left:22px';
+        RELEASE_NOTES.forEach(note => {
+            const item = document.createElement('li');
+            item.textContent = note;
+            list.appendChild(item);
+        });
+        frame.appendChild(list);
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn blue px-4 py-2 font-semibold';
+        button.textContent = 'Got it';
+        button.onclick = close;
+        frame.appendChild(button);
+        button.focus();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -2249,8 +2341,13 @@
     // MODULE 18: SETTINGS PANELS (DRAWER & INLINE)
     // ─────────────────────────────────────────────────────────────────────────
 
+    function escapeHTML(value) {
+        return String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[char]));
+    }
+
     function generateSettingsHTML(prefix) {
         return `
+            <div class="eb-group"><button type="button" class="btn blue" id="${prefix}-updates">What’s new · ${SCRIPT_VERSION}</button></div>
             <div class="eb-group">
                 <h4>Appearance</h4>
                 <div class="eb-row">
@@ -2276,7 +2373,7 @@
                 </div>
                 <div class="eb-row" id="${prefix}-custom-cursor-row" style="display:${config.cursorStyle === 'custom' ? 'flex' : 'none'};">
                     <span>Cursor URL/GIF</span>
-                    <input type="text" id="${prefix}-cursor-url" placeholder="Paste GIF link..." value="${config.customCursorUrl || ''}">
+                    <input type="text" id="${prefix}-cursor-url" placeholder="Paste GIF link..." value="${escapeHTML(config.customCursorUrl || '')}">
                 </div>
             </div>
 
@@ -2297,7 +2394,7 @@
                 </div>
                 <div class="eb-row" id="${prefix}-custom-row" style="display:${config.accentPreset === 'custom' ? 'flex' : 'none'};">
                     <span>Pick Accent</span>
-                    <input type="color" id="${prefix}-custom-col" value="${config.customAccentColor}">
+                    <input type="color" id="${prefix}-custom-col" value="${escapeHTML(config.customAccentColor)}">
                 </div>
                 <div id="${prefix}-rainbow-box" style="display:${config.accentPreset === 'rainbow' ? 'block' : 'none'};">
                     <div class="eb-row">
@@ -2314,7 +2411,7 @@
             <div class="eb-group">
                 <h4>Custom Background (20-Stage Fallback Pipeline)</h4>
                 <div style="display:flex; flex-direction:column; gap:6px;">
-                    <input type="text" id="${prefix}-bg-url" placeholder="Paste image or GIF URL..." value="${config.bgSourceUrl || ''}">
+                    <input type="text" id="${prefix}-bg-url" placeholder="Paste image or GIF URL..." value="${escapeHTML(config.bgSourceUrl || '')}">
                     <div style="display:flex; gap:6px;">
                         <label class="btn blue text-xs py-1 px-2.5 rounded cursor-pointer" style="flex:1; text-align:center;">
                             Upload File/GIF <input type="file" id="${prefix}-bg-file" accept="image/*" style="display:none;">
@@ -2380,6 +2477,8 @@
     }
 
     function bindSettingsEvents(root, prefix) {
+        root.querySelector(`#${prefix}-updates`)?.addEventListener('click', () => showUpdateNotes(true));
+        root.querySelectorAll('button').forEach(button => { button.type = 'button'; });
         const bindCheckbox = (id, key) => {
             root.querySelector(`#${prefix}-${id}`)?.addEventListener('change', e => {
                 config[key] = e.target.checked;
@@ -2472,6 +2571,7 @@
                 const resolution = await AssetPipeline.executePipeline(rawUrl);
                 if (resolution.data instanceof Blob) {
                     if (!await IndexedDBStorage.putBlob('primary_background', resolution.data)) throw new Error('Background storage failed');
+                    config.bgRevision = (Number(config.bgRevision) || 0) + 1;
                     config.bgType = 'indexeddb';
                     config.bgSourceUrl = rawUrl;
                     config.bgActiveBlobKey = 'primary_background';
@@ -2497,6 +2597,7 @@
                 if (bgStatus) bgStatus.textContent = `Status: Saving ${file.name} to IndexedDB...`;
                 if (!await IndexedDBStorage.putBlob('primary_background', file)) { if (bgStatus) bgStatus.textContent = 'Status: Storage failed; previous background kept'; return; }
                 config.bgType = 'indexeddb';
+                config.bgRevision = (Number(config.bgRevision) || 0) + 1;
                 config.bgSourceUrl = file.name;
                 config.bgActiveBlobKey = 'primary_background';
                 StorageEngine.saveConfig(config);
@@ -2526,6 +2627,7 @@
             a.href = URL.createObjectURL(blob);
             a.download = `EduBake_Database_${Date.now()}.json`;
             a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 1000);
         });
 
         root.querySelector(`#${prefix}-db-clear`)?.addEventListener('click', () => {
@@ -2753,6 +2855,10 @@
     function setText(el, value) { if (el && el.textContent !== String(value)) el.textContent = String(value); }
     function boundedNumber(value, min, max, fallback) { const n = value === '' ? NaN : Number(value); return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback; }
     function executeCycle() {
+        if (!config.quizUI2 || !isLiveQuizRoute()) {
+            document.getElementById('edubake-hud-pill')?.remove();
+            document.querySelector('.edubake-fast-submit-btn')?.remove();
+        }
         applyTheme();
         ensureBackgroundCanvas();
         applyCursorConfiguration();
@@ -2764,6 +2870,7 @@
         monitorScoreAndSafeguards();
         mountInlinePanel();
         mountSideDrawer();
+        showUpdateNotes();
     }
 
     document.addEventListener('keydown', e => { if (e.key === 'Escape') { document.querySelectorAll('.edubake-modal-backdrop').forEach(el => el.remove()); document.getElementById('edubake-side-drawer')?.classList.remove('opened'); } });
