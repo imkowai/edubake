@@ -1,0 +1,14 @@
+{
+  "name": "edubake",
+  "version": "3.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check edubake.user.js && node --check extension/background.js && node --check extension/reporter.js && node --check extension/bridge.js && node --check extension/popup.js",
+    "test": "node tests/integration.mjs && node tests/media-companion.mjs"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "6.2.8",
+    "happy-dom": "21.0.4"
+  }
+}

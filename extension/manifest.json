@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "EduBake Browser Media Companion",
+  "version": "1.0.0",
+  "description": "Optional browser-wide playing-track display for EduBake. No credentials, telemetry or network service.",
+  "permissions": ["scripting", "storage"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "background": {"service_worker": "background.js"},
+  "action": {"default_popup": "popup.html"},
+  "content_scripts": [{"matches": ["https://my.educake.co.uk/*"], "js": ["bridge.js"], "run_at": "document_idle"}]
+}
